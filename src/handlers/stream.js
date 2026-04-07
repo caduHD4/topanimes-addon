@@ -1,6 +1,21 @@
 const { fromEpisodeId } = require("../utils/ids");
 const { resolvePlayerStreams } = require("../extractors/routerExtractor");
 
+const DEBUG_STREAMS = process.env.TOPANIMES_DEBUG_STREAMS === "1";
+
+function debugLog(message, extra) {
+  if (!DEBUG_STREAMS) {
+    return;
+  }
+
+  if (typeof extra === "undefined") {
+    console.log(`[stream-handler] ${message}`);
+    return;
+  }
+
+  console.log(`[stream-handler] ${message}`, extra);
+}
+
 function buildProxyHeaders(referer) {
   if (!referer) {
     return undefined;
@@ -30,22 +45,40 @@ function buildProxyHeaders(referer) {
 
 async function buildStreamHandler(scraper) {
   return async function streamHandler(args) {
+    const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
     try {
       const episodeUrl = fromEpisodeId(args.id);
       if (!episodeUrl) {
+        debugLog("invalid episode id", { requestId, id: args.id });
         return { streams: [] };
       }
 
+      debugLog("request start", { requestId, id: args.id, episodeUrl });
+
       const episodePageUrl = await scraper.getEpisodePage(episodeUrl);
       if (!episodePageUrl) {
+        debugLog("episode page not found", { requestId, episodeUrl });
         return { streams: [] };
       }
 
       const players = await scraper.getPlayerCandidates(episodePageUrl);
+      debugLog("players found", {
+        requestId,
+        count: players.length,
+        players: players.map((player) => ({ name: player.name, url: player.url }))
+      });
+
       const streamEntries = [];
 
       for (const player of players) {
         const extracted = await resolvePlayerStreams(player);
+        debugLog("player resolved", {
+          requestId,
+          player: player.name,
+          extracted: extracted.length
+        });
+
         for (const item of extracted) {
           const stream = {
             name: "TopAnimes",
@@ -72,8 +105,19 @@ async function buildStreamHandler(scraper) {
         dedup.push(entry);
       }
 
+      debugLog("request done", {
+        requestId,
+        totalBeforeDedup: streamEntries.length,
+        totalAfterDedup: dedup.length
+      });
+
       return { streams: dedup };
     } catch (error) {
+      debugLog("request error", {
+        requestId,
+        message: error && error.message ? error.message : String(error)
+      });
+
       return { streams: [] };
     }
   };
