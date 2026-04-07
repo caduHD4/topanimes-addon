@@ -78,7 +78,11 @@ async function extractUniversal(url, name) {
     return normalizeMatches(matches, name, url);
   }
 
-  return extractWithBrowser(url, name);
+  try {
+    return await extractWithBrowser(url, name);
+  } catch (_) {
+    return [];
+  }
 }
 
 module.exports = {
