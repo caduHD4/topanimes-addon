@@ -17,7 +17,8 @@ async function resolvePlayerStreams(player) {
     if (url.includes("blogger.com/video.g")) {
       return [{
         title: `${player.name || "Blogger"} - direct`,
-        url
+        url,
+        referer: url
       }];
     }
 

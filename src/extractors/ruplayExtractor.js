@@ -20,7 +20,8 @@ async function extractRuplay(url) {
       const videoUrl = part.split("]")[1] || "";
       return {
         title: `Ruplay - ${quality}`,
-        url: videoUrl.trim()
+        url: videoUrl.trim(),
+        referer: url
       };
     })
     .filter((entry) => Boolean(entry.url));

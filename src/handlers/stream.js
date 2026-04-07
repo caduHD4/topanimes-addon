@@ -1,6 +1,33 @@
 const { fromEpisodeId } = require("../utils/ids");
 const { resolvePlayerStreams } = require("../extractors/routerExtractor");
 
+function buildProxyHeaders(referer) {
+  if (!referer) {
+    return undefined;
+  }
+
+  const requestHeaders = {
+    Referer: referer,
+    "User-Agent": process.env.TOPANIMES_USER_AGENT || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept-Language": "pt-BR,pt;q=0.9"
+  };
+
+  try {
+    const origin = new URL(referer).origin;
+    if (origin) {
+      requestHeaders.Origin = origin;
+    }
+  } catch (_) {
+    // Ignore origin parse failures and keep referer-only headers.
+  }
+
+  return {
+    proxyHeaders: {
+      request: requestHeaders
+    }
+  };
+}
+
 async function buildStreamHandler(scraper) {
   return async function streamHandler(args) {
     try {
@@ -26,14 +53,9 @@ async function buildStreamHandler(scraper) {
             url: item.url
           };
 
-          if (item.referer) {
-            stream.behaviorHints = {
-              proxyHeaders: {
-                request: {
-                  Referer: item.referer
-                }
-              }
-            };
+          const behaviorHints = buildProxyHeaders(item.referer);
+          if (behaviorHints) {
+            stream.behaviorHints = behaviorHints;
           }
 
           streamEntries.push(stream);

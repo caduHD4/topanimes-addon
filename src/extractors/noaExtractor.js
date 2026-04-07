@@ -14,7 +14,7 @@ async function extractNoa(url, providerName) {
       ?.replace(/\\/g, "") || "";
 
     return videoUrl
-      ? [{ title: providerName || "NOA", url: videoUrl }]
+      ? [{ title: providerName || "NOA", url: videoUrl, referer: url }]
       : [];
   }
 
@@ -34,7 +34,8 @@ async function extractNoa(url, providerName) {
 
         return {
           title: `${providerName || "NOA"} - ${label}`,
-          url: videoUrl
+          url: videoUrl,
+          referer: url
         };
       })
       .filter((entry) => Boolean(entry.url));
