@@ -108,7 +108,8 @@ async function buildStreamHandler(scraper) {
       debugLog("request done", {
         requestId,
         totalBeforeDedup: streamEntries.length,
-        totalAfterDedup: dedup.length
+        totalAfterDedup: dedup.length,
+        totalAfterValidation: dedup.length
       });
 
       return { streams: dedup };
