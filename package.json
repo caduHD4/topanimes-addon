@@ -1,6 +1,6 @@
 {
   "name": "topanimes-addon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Stremio addon TopAnimes baseado na fonte Q1N",
   "main": "src/index.js",
   "type": "commonjs",

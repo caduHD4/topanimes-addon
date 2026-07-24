@@ -42,7 +42,7 @@ async function resolvePlayerStreams(player) {
       return direct;
     }
 
-    if (name.includes("ruplay")) {
+    if (name.includes("ruplay") || name.includes("zuplay") || url.includes("csst.online") || url.includes("secvideo1") || url.includes("fsst.online") || url.includes("incvideo1")) {
       const result = await extractRuplay(url);
       debugLog("resolver success (ruplay)", { count: result.length });
       return result;

@@ -1,6 +1,6 @@
 module.exports = {
   id: "org.topanimes.stremio",
-  version: "0.1.0",
+  version: "0.2.0",
   name: "TopAnimes",
   description: "Busca e streams da fonte Q1N/AnimesGratis",
   resources: ["catalog", "meta", "stream"],

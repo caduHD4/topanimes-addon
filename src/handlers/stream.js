@@ -121,18 +121,41 @@ async function buildStreamHandler(scraper) {
         }
 
         for (const item of res.value) {
-          const stream = {
-            name: "TopAnimes",
-            title: item.title,
-            url: item.url
-          };
-
           const behaviorHints = buildProxyHeaders(item.referer);
-          if (behaviorHints) {
-            stream.behaviorHints = behaviorHints;
-          }
 
-          streamEntries.push(stream);
+          if (item.referer && (item.url.includes("incvideo1") || item.url.includes("secvideo1") || item.url.includes("csst.online") || item.url.includes("fsst.online"))) {
+            const addonBase = process.env.ADDON_URL || process.env.RENDER_EXTERNAL_URL || "http://127.0.0.1:7000";
+            const cleanAddonBase = addonBase.startsWith("http") ? addonBase : `https://${addonBase}`;
+            const proxiedUrl = `${cleanAddonBase}/proxy?url=${encodeURIComponent(item.url)}&referer=${encodeURIComponent(item.referer)}`;
+
+            // Opção 1: Proxy com CORS e Referer (funciona no Nuvio Player, Stremio Web, Mobile e Browser)
+            streamEntries.push({
+              name: "TopAnimes",
+              title: item.title,
+              url: proxiedUrl
+            });
+
+            // Opção 2: Link Direto (para Stremio Desktop / LibVLC)
+            const directStream = {
+              name: "TopAnimes",
+              title: `${item.title} (Direto)`,
+              url: item.url
+            };
+            if (behaviorHints) {
+              directStream.behaviorHints = behaviorHints;
+            }
+            streamEntries.push(directStream);
+          } else {
+            const stream = {
+              name: "TopAnimes",
+              title: item.title,
+              url: item.url
+            };
+            if (behaviorHints) {
+              stream.behaviorHints = behaviorHints;
+            }
+            streamEntries.push(stream);
+          }
         }
       }
 
