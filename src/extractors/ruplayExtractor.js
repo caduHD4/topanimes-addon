@@ -4,10 +4,8 @@ function extractIntermediatePageUrl(html) {
   const content = String(html || "");
 
   const candidates = [
-    /https:\/\/www\.secvideo1\.online\/videos\/[^"'\s)]+/i,
-    /https:\/\/www\.secvideo1\.online\/embed\/[^"'\s)]+/i,
-    /https:\/\/fsst\.online\/videos\/[^"'\s)]+/i,
-    /https:\/\/fsst\.online\/embed\/[^"'\s)]+/i
+    /https?:\/\/[^"'\s)]*(?:secvideo1|fsst|csst|incvideo1)[^"'\s)]*\/(?:videos|embed)\/[^"'\s)]+/i,
+    /https?:\/\/[^"'\s)]+\/(?:videos|embed)\/[^"'\s)]+/i
   ];
 
   for (const pattern of candidates) {
@@ -20,47 +18,21 @@ function extractIntermediatePageUrl(html) {
   return undefined;
 }
 
-function extractPreferredReferer(html, fallbackUrl) {
+function extractPreferredReferer(html, fallbackUrl, videoUrl) {
+  if (videoUrl) {
+    try {
+      const origin = new URL(videoUrl).origin;
+      if (origin) {
+        return `${origin}/`;
+      }
+    } catch (_) {}
+  }
+
   const content = String(html || "");
 
-  const secVideoPageMatch = content.match(/https:\/\/www\.secvideo1\.online\/videos\/[^"'\s)]+/i);
-  if (secVideoPageMatch && secVideoPageMatch[0]) {
-    return secVideoPageMatch[0];
-  }
-
-  const secVideoEmbedMatch = content.match(/https:\/\/www\.secvideo1\.online\/embed\/[^"'\s)]+/i);
-  if (secVideoEmbedMatch && secVideoEmbedMatch[0]) {
-    return secVideoEmbedMatch[0];
-  }
-
-  const fsstPageMatch = content.match(/https:\/\/fsst\.online\/videos\/[^"'\s)]+/i);
-  if (fsstPageMatch && fsstPageMatch[0]) {
-    return fsstPageMatch[0];
-  }
-
-  const fsstEmbedMatch = content.match(/https:\/\/fsst\.online\/embed\/[^"'\s)]+/i);
-  if (fsstEmbedMatch && fsstEmbedMatch[0]) {
-    return fsstEmbedMatch[0];
-  }
-
-  const ogVideoMatch = content.match(/<meta\s+property=["']og:video["']\s+content=["']([^"']+)["']/i);
-  if (ogVideoMatch && ogVideoMatch[1]) {
-    return ogVideoMatch[1];
-  }
-
-  const ogUrlMatch = content.match(/<meta\s+property=["']og:url["']\s+content=["']([^"']+)["']/i);
-  if (ogUrlMatch && ogUrlMatch[1]) {
-    return ogUrlMatch[1];
-  }
-
-  const embedMatch = content.match(/embed:\s*["']([^"']+)["']/i);
-  if (embedMatch && embedMatch[1]) {
-    return embedMatch[1];
-  }
-
-  const urlMatch = content.match(/url:\s*["']([^"']+)["']/i);
-  if (urlMatch && urlMatch[1]) {
-    return urlMatch[1];
+  const match = content.match(/https?:\/\/[^"'\s)]*(?:secvideo1|fsst|csst|incvideo1)[^"'\s)]*\/(?:videos|embed)\/[^"'\s)]+/i);
+  if (match && match[0]) {
+    return match[0];
   }
 
   return fallbackUrl;
@@ -89,8 +61,6 @@ async function extractRuplay(url) {
     }
   }
 
-  const referer = extractPreferredReferer(html, intermediatePageUrl || url);
-
   const filePayload = html
     .split("Playerjs({")[1]
     ?.split("file:\"")[1]
@@ -104,10 +74,14 @@ async function extractRuplay(url) {
     .split(",")
     .map((part) => {
       const quality = (part.match(/\[([^\]]+)\]/) || ["", "Default"])[1];
-      const videoUrl = part.split("]")[1] || "";
+      const rawVideoUrl = (part.split("]")[1] || "").trim();
+      const videoUrl = rawVideoUrl.replace(/\/+$/, "");
+
+      const referer = extractPreferredReferer(html, intermediatePageUrl || url, videoUrl);
+
       return {
         title: `Ruplay - ${quality}`,
-        url: videoUrl.trim(),
+        url: videoUrl,
         referer
       };
     })

@@ -43,11 +43,42 @@ function buildProxyHeaders(referer) {
   };
 }
 
+const { TTLCache } = require("../utils/cache");
+
+const streamCache = new TTLCache();
+const PLAYER_TIMEOUT_MS = Number(process.env.TOPANIMES_PLAYER_TIMEOUT_MS || 6000);
+
+function withTimeout(promise, ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve([]), ms);
+    promise
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        resolve([]);
+      });
+  });
+}
+
 async function buildStreamHandler(scraper) {
   return async function streamHandler(args) {
     const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
     try {
+      if (!args || !args.id) {
+        return { streams: [] };
+      }
+
+      const cacheKey = `stream:${args.id}`;
+      const cached = streamCache.get(cacheKey);
+      if (cached) {
+        debugLog("cache hit", { requestId, id: args.id });
+        return { streams: cached };
+      }
+
       const episodeUrl = fromEpisodeId(args.id);
       if (!episodeUrl) {
         debugLog("invalid episode id", { requestId, id: args.id });
@@ -62,24 +93,34 @@ async function buildStreamHandler(scraper) {
         return { streams: [] };
       }
 
-      const players = await scraper.getPlayerCandidates(episodePageUrl);
+      const allPlayers = await scraper.getPlayerCandidates(episodePageUrl);
+      
+      // Filtrar leitores offline (URLs /off/)
+      const players = allPlayers.filter((p) => p && p.url && !p.url.includes("/off/"));
+
       debugLog("players found", {
         requestId,
-        count: players.length,
+        total: allPlayers.length,
+        filtered: players.length,
         players: players.map((player) => ({ name: player.name, url: player.url }))
       });
 
+      // Resolver todos os players em paralelo com timeout individual
+      const playerPromises = players.map((player) =>
+        withTimeout(resolvePlayerStreams(player), PLAYER_TIMEOUT_MS)
+      );
+
+      const results = await Promise.allSettled(playerPromises);
+
       const streamEntries = [];
 
-      for (const player of players) {
-        const extracted = await resolvePlayerStreams(player);
-        debugLog("player resolved", {
-          requestId,
-          player: player.name,
-          extracted: extracted.length
-        });
+      for (let i = 0; i < results.length; i++) {
+        const res = results[i];
+        if (res.status !== "fulfilled" || !Array.isArray(res.value)) {
+          continue;
+        }
 
-        for (const item of extracted) {
+        for (const item of res.value) {
           const stream = {
             name: "TopAnimes",
             title: item.title,
@@ -108,9 +149,12 @@ async function buildStreamHandler(scraper) {
       debugLog("request done", {
         requestId,
         totalBeforeDedup: streamEntries.length,
-        totalAfterDedup: dedup.length,
-        totalAfterValidation: dedup.length
+        totalAfterDedup: dedup.length
       });
+
+      if (dedup.length > 0) {
+        streamCache.set(cacheKey, dedup, 20 * 60 * 1000); // 20 minutos de cache
+      }
 
       return { streams: dedup };
     } catch (error) {
