@@ -1,7 +1,7 @@
 const http = require("../utils/http");
+const vm = require("vm");
 
 const VIDEO_REGEX = /https?:\/\/[^\"'\s]+\.(mp4|m3u8|mpd)(\?[^\"'\s]*)?/gi;
-const BROWSER_TIMEOUT_MS = Number(process.env.TOPANIMES_BROWSER_TIMEOUT_MS || 12000);
 
 function normalizeMatches(matches, name, referer) {
   const unique = [...new Set(matches)];
@@ -12,75 +12,96 @@ function normalizeMatches(matches, name, referer) {
   }));
 }
 
-async function extractWithBrowser(url, name) {
-  let chromium;
-  try {
-    ({ chromium } = require("playwright"));
-  } catch (_) {
-    return [];
+function extractPackedScripts(html) {
+  const content = String(html || "");
+  const scripts = [];
+  const pattern = /eval\(function\(p,a,c,k,e,d\)[\s\S]+?\}\)\)/gi;
+
+  let match;
+  while ((match = pattern.exec(content)) !== null) {
+    scripts.push(match[0]);
   }
 
-  const found = new Set();
-  const browser = await chromium.launch({ headless: true });
+  return scripts;
+}
+
+function decodePackedScript(script) {
+  const sandbox = {
+    MDCore: {},
+    window: {},
+    document: {},
+    navigator: {},
+    location: {},
+    atob: (value) => Buffer.from(String(value), "base64").toString("binary"),
+    btoa: (value) => Buffer.from(String(value), "binary").toString("base64")
+  };
 
   try {
-    const page = await browser.newPage({
-      userAgent:
-        process.env.TOPANIMES_USER_AGENT ||
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    });
-
-    page.on("response", (response) => {
-      const responseUrl = response.url();
-      if (VIDEO_REGEX.test(responseUrl)) {
-        found.add(responseUrl);
-      }
-    });
-
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: BROWSER_TIMEOUT_MS });
-    await page.waitForTimeout(2200);
-
-    await page.evaluate(() => {
-      const playButton = document.getElementById("player-button-container");
-      if (playButton) {
-        playButton.click();
-      }
-
-      const downloadButton = document.querySelector(".downloader-button");
-      if (downloadButton) {
-        if (downloadButton.href) {
-          window.location.href = downloadButton.href;
-        } else {
-          downloadButton.click();
-        }
-      }
-
-      try {
-        window.jwplayer(0).play();
-      } catch (_) {
-        // no-op
-      }
-    });
-
-    await page.waitForTimeout(2800);
-    return normalizeMatches([...found], name, url);
-  } finally {
-    await browser.close();
+    vm.runInNewContext(script, sandbox, { timeout: 1000 });
+    const content = JSON.stringify(sandbox);
+    const matches = content.match(VIDEO_REGEX) || [];
+    return matches;
+  } catch (_) {
+    return [];
   }
 }
 
 async function extractUniversal(url, name) {
-  const response = await http.get(url);
-  const html = String(response.data || "");
-  const matches = html.match(VIDEO_REGEX) || [];
-
-  if (matches.length > 0) {
-    return normalizeMatches(matches, name, url);
-  }
-
   try {
-    return await extractWithBrowser(url, name);
-  } catch (_) {
+    const response = await http.get(url);
+    const html = String(response.data || "");
+    const foundUrls = new Set();
+
+    // 1. JWPlayer sources
+    const sourcesMatch = html.match(/sources\s*:\s*(\[[\s\S]*?\])/);
+    if (sourcesMatch && sourcesMatch[1]) {
+      try {
+        const parsed = JSON.parse(sourcesMatch[1]);
+        for (const item of parsed) {
+          if (item.file) {
+            foundUrls.add(item.file);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. Playerjs file payload
+    if (html.includes("Playerjs")) {
+      const filePayload = html.split("Playerjs({")[1]?.split("file:\"")[1]?.split("\"")[0] || "";
+      if (filePayload) {
+        const parts = filePayload.split(",");
+        for (const part of parts) {
+          const videoUrl = (part.split("]")[1] || part).trim().replace(/\/+$/, "");
+          if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
+            foundUrls.add(videoUrl);
+          }
+        }
+      }
+    }
+
+    // 3. Packed JS Scripts (Mixdrop, Filemoon, etc.)
+    const packedScripts = extractPackedScripts(html);
+    for (const script of packedScripts) {
+      const unpackedUrls = decodePackedScript(script);
+      for (const u of unpackedUrls) {
+        foundUrls.add(u);
+      }
+    }
+
+    // 4. Regex fallback on HTML
+    const regexMatches = html.match(VIDEO_REGEX) || [];
+    for (const u of regexMatches) {
+      if (!u.includes("jwplayer") && !u.includes("jquery") && !u.includes("googleapis.com")) {
+        foundUrls.add(u);
+      }
+    }
+
+    if (foundUrls.size > 0) {
+      return normalizeMatches([...foundUrls], name, url);
+    }
+
+    return [];
+  } catch (error) {
     return [];
   }
 }
