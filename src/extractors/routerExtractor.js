@@ -1,4 +1,5 @@
 const { extractRuplay } = require("./ruplayExtractor");
+const { extractZuplay } = require("./zuplayExtractor");
 const { extractNoa } = require("./noaExtractor");
 const { extractStreamWish } = require("./streamWishExtractor");
 const { extractFileMoon } = require("./fileMoonExtractor");
@@ -42,7 +43,13 @@ async function resolvePlayerStreams(player) {
       return direct;
     }
 
-    if (name.includes("ruplay") || name.includes("zuplay") || url.includes("csst.online") || url.includes("secvideo1") || url.includes("fsst.online") || url.includes("incvideo1")) {
+    if (name.includes("zuplay") || url.includes("alibabacdn")) {
+      const result = await extractZuplay(url, "Zuplay");
+      debugLog("resolver success (zuplay)", { count: result.length });
+      return result;
+    }
+
+    if (name.includes("ruplay") || url.includes("csst.online") || url.includes("secvideo1") || url.includes("fsst.online") || url.includes("incvideo1")) {
       const result = await extractRuplay(url);
       debugLog("resolver success (ruplay)", { count: result.length });
       return result;
