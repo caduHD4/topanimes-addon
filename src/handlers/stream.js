@@ -182,7 +182,7 @@ async function buildStreamHandler(scraper) {
       });
 
       if (dedup.length > 0) {
-        streamCache.set(cacheKey, dedup, 20 * 60 * 1000); // 20 minutos de cache
+        streamCache.set(cacheKey, dedup, 5 * 60 * 1000); // 5 minutos de cache para manter os tokens de vídeo sempre válidos
       }
 
       return { streams: dedup };

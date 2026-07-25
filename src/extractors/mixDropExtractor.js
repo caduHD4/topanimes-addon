@@ -53,21 +53,50 @@ function decodeMixDropFromScript(script) {
 }
 
 async function extractMixDrop(url) {
-  const response = await http.get(url);
-  const html = response.data;
-  const urls = collectVideoUrls(html, url);
+  const mirrorsToTry = [url];
 
-  if (urls.length === 0) {
-    const packedScripts = extractPackedScripts(html);
-    for (const script of packedScripts) {
-      const decoded = decodeMixDropFromScript(script);
-      if (decoded) {
-        urls.push(decoded);
+  // If URL has a Mixdrop code e.g. /e/knjg7jq0fp3o0n, add backup mirrors
+  const codeMatch = url.match(/\/e\/([a-zA-Z0-9]+)/);
+  if (codeMatch && codeMatch[1]) {
+    const code = codeMatch[1];
+    const backupDomains = ["mixdrop.to", "mixdrop.bz", "mixdrop.is", "mixdrop.gl", "mixdrop.ch"];
+    for (const domain of backupDomains) {
+      const mirrorUrl = `https://${domain}/e/${code}`;
+      if (mirrorUrl !== url) {
+        mirrorsToTry.push(mirrorUrl);
       }
     }
   }
 
-  return asStreams(urls, "MixDrop", url);
+  for (const targetUrl of mirrorsToTry) {
+    try {
+      const response = await http.get(targetUrl, { timeout: 5000 });
+      const html = String(response.data || "");
+
+      // Check if file is deleted on MixDrop
+      if (html.includes("File Not Found") || html.includes("deleted") || html.includes("#ed524e")) {
+        continue;
+      }
+
+      const urls = collectVideoUrls(html, targetUrl);
+
+      if (urls.length === 0) {
+        const packedScripts = extractPackedScripts(html);
+        for (const script of packedScripts) {
+          const decoded = decodeMixDropFromScript(script);
+          if (decoded) {
+            urls.push(decoded);
+          }
+        }
+      }
+
+      if (urls.length > 0) {
+        return asStreams(urls, "MixDrop", targetUrl);
+      }
+    } catch (_) {}
+  }
+
+  return [];
 }
 
 module.exports = {
