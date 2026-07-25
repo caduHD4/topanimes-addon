@@ -23,6 +23,13 @@ async function bootstrap() {
   const port = Number(process.env.PORT || 7000);
 
   const server = http.createServer((req, res) => {
+    if (req.url && (req.url === "/" || req.url === "")) {
+      res.statusCode = 302;
+      res.setHeader("Location", "/manifest.json");
+      res.end();
+      return;
+    }
+
     if (req.url && req.url.startsWith("/proxy")) {
       return proxyHandler(req, res);
     }
