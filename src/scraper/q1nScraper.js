@@ -11,15 +11,15 @@ class Q1NScraper {
     this.cache = new TTLCache();
   }
 
-  async listCatalog(searchQuery) {
+  async listCatalog(searchQuery, page = 1) {
     const query = (searchQuery || "").trim();
-    const cacheKey = `catalog:${query}`;
+    const cacheKey = `catalog:${query}:p${page}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const html = query ? await this.searchHtml(query) : await this.popularHtml();
+    const html = query ? await this.searchHtml(query, page) : await this.popularHtml(page);
     const $ = cheerio.load(html);
 
     const items = [];
@@ -87,15 +87,16 @@ class Q1NScraper {
     return items;
   }
 
-  async listEpisodes() {
-    const cacheKey = `episodes`;
+  async listEpisodes(page = 1) {
+    const cacheKey = `episodes:p${page}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
       return cached;
     }
 
     try {
-      const response = await http.get(`${BASE_URL}/episodio/`);
+      const pagePath = page > 1 ? `page/${page}/` : "";
+      const response = await http.get(`${BASE_URL}/episodio/${pagePath}`);
       const $ = cheerio.load(response.data);
 
       const items = [];
@@ -148,8 +149,6 @@ class Q1NScraper {
                    article$.find("img").first().attr("data-src");
         }
 
-        const animePoster = await this.getAnimePosterByEpisodeSlug(slug);
-
         const unixTimeRaw = article$.find("time.timeS").attr("time") || article$.find("time").attr("datetime");
         const unixTime = Number(unixTimeRaw);
 
@@ -157,15 +156,26 @@ class Q1NScraper {
           id: toAnimeId(slug),
           type: "series",
           name: title,
-          poster: animePoster || (poster ? this.normalizePosterUrl(this.absoluteUrl(poster), "w154") : undefined),
+          poster: poster ? this.normalizePosterUrl(this.absoluteUrl(poster), "w154") : undefined,
+          _slug: slug,
           _ts: Number.isFinite(unixTime) && unixTime > 0 ? unixTime : 0
         });
       }
 
+      await Promise.all(
+        items.map(async (item) => {
+          if (!item._slug) return;
+          const animePoster = await this.getAnimePosterByEpisodeSlug(item._slug);
+          if (animePoster) {
+            item.poster = animePoster;
+          }
+        })
+      );
+
       // Ordena do mais novo para o mais antigo.
       items.sort((a, b) => b._ts - a._ts);
 
-      const metas = items.map(({ _ts, ...meta }) => meta);
+      const metas = items.map(({ _ts, _slug, ...meta }) => meta);
 
       this.cache.set(cacheKey, metas, 10 * 60 * 1000);  // 10 min cache
       return metas;
@@ -549,13 +559,15 @@ class Q1NScraper {
     }
   }
 
-  async popularHtml() {
-    const response = await http.get(`${BASE_URL}/animes/`);
+  async popularHtml(page = 1) {
+    const pagePath = page > 1 ? `page/${page}/` : "";
+    const response = await http.get(`${BASE_URL}/animes/${pagePath}`);
     return response.data;
   }
 
-  async searchHtml(query) {
-    const response = await http.get(`${BASE_URL}/?s=${encodeURIComponent(query)}`);
+  async searchHtml(query, page = 1) {
+    const pagePath = page > 1 ? `page/${page}/` : "";
+    const response = await http.get(`${BASE_URL}/${pagePath}?s=${encodeURIComponent(query)}`);
     return response.data;
   }
 

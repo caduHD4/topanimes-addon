@@ -12,15 +12,18 @@ module.exports = {
       id: "topanimes",
       name: "Top Animes",
       extra: [
-        { name: "search", isRequired: false }
+        { name: "search", isRequired: false },
+        { name: "skip", isRequired: false }
       ]
     },
-      {
-        type: "series",
-        id: "topanimes-episodes",
-        name: "Lançamentos",
-        extra: []
-      }
+    {
+      type: "series",
+      id: "topanimes-episodes",
+      name: "Lançamentos",
+      extra: [
+        { name: "skip", isRequired: false }
+      ]
+    }
   ],
   behaviorHints: {
     configurable: false,
